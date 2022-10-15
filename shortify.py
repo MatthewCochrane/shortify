@@ -34,8 +34,13 @@ def completion(prompt, stop: List[str] = None):
 
 def shortify_part(title, known: List[str], questions: List[str], next_part, fraction_done):
     prompt = f"""
-I'm part way through reading the document named "{title}".  I've read {fraction_done*100:.0f}% of it so far and here's what I already know:
+I'm {fraction_done*100:.0f}% of the way through reading the document named "{title}".  Here are my current notes:
+```json
 {json.dumps(known)}
+```
+
+I'm part way through reading the document named "{title}".  I've read {fraction_done*100:.0f}% of it so far and here's what I already know:
+{json.dumps(known)} 
 
 I have these outstanding questions:
 {json.dumps(questions)}
@@ -49,7 +54,8 @@ Next, answer the following questions about the new part I just read:
 Q1: Do I understand the part? (boolean)
 Q2: What did I learn from the part? (string)
 Q3: List any question I have. (array)
-Q4: List any important key points from the part.  These should make sense out of context. (array)
+Q4: What notes do you have from this part? (array)
+Q5: Rewrite the overall notes keeping the document structure. (object)
 
 ```json
 {{
@@ -64,13 +70,13 @@ Q4: List any important key points from the part.  These should make sense out of
             response = json.loads(f"{{\"A1\": {response}")
             assert response["A2"] is not None and isinstance(response["A2"], str)
             assert response["A3"] is not None and all(isinstance(el, str) for el in response["A3"])
-            assert response["A4"] is not None and all(isinstance(el, str) for el in response["A4"])
+            # assert response["A4"] is not None and all(isinstance(el, str) for el in response["A4"])
             print(f"Finished part. {fraction_done*100:.0f}% done.")
             return [
                 str(response["A1"]).lower().strip() in ['true', 'yes'],
                 response["A2"],
                 response["A3"],
-                response["A4"],
+                response["A5"],
             ]
         except json.JSONDecodeError:
             print("JSONDecodeError", fraction_done)
@@ -92,17 +98,19 @@ Q4: List any important key points from the part.  These should make sense out of
 # """
 questions = []
 question_set = set()
-known = []
-known_set = set()
+known = {
+  "sections": {}
+}
 learned = []
 understood = []
 
 
-url = "https://docs.spring.io/spring-framework/docs/5.0.0.RC2/spring-framework-reference/overview.html"
+# url = "https://docs.spring.io/spring-framework/docs/5.0.0.RC2/spring-framework-reference/overview.html"
+url = "https://maven.apache.org/what-is-maven.html"
 article = Article(url=url)
 article.download()
 article.parse()
-input = article.html
+input = article.text
 title = article.title
 
 
@@ -114,10 +122,7 @@ parts = wrap(input, MAX_PART_LENGTH)
 for i, part in enumerate(parts):
     try:
         new_understood, new_learned, new_questions, new_known = shortify_part(title, list(known), list(questions), part, i / len(parts))
-        for nk in new_known:
-            if nk not in map(lambda k: k.strip(), known_set):
-                known.append(nk)
-                known_set.add(nk)
+        known = new_known
         for nq in map(lambda q: q.strip(), new_questions):
             if nq not in question_set:
                 questions.append(nq)
